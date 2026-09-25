@@ -1,0 +1,21 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+logs/
+*.log
+
+# Market data (checked out locally, not versioned)
+data/raw/
+data/parquet/
+
+# Backtest output artifacts (regenerated on each run)
+backtest/results/
+
+# IDE / tool session data
+.claude/
+.vscode/
+
+# Scratch
+*.tmp

@@ -122,11 +122,11 @@ _Computed in: [core/indicators.py:add_5m_indicators](core/indicators.py)_
 
 | Display | id | timeframe | columns | use cases |
 |---|---|---|---|---|
-| Locked session-half directional bias | `locked_bias` | runtime | `bias_direction`, `fh_close`, `prev_sh_close` | directional_gate, session_bias |
+| Locked session-half directional bias (OPT-IN) | `locked_bias` | runtime | `bias_direction`, `fh_close`, `prev_sh_close` | directional_gate, session_bias |
 
-#### `locked_bias` — Locked session-half directional bias
+#### `locked_bias` — Locked session-half directional bias (OPT-IN)
 
-+1 long / -1 short / 0 none, locked at the first bar of each session-half against the previous half's close. Anchor: first half → yesterday's second-half close; second half → today's first-half close. ATR-based dead zone keeps the bias stable across vol regimes.
+NOT COMPUTED BY DEFAULT - pass with_locked_bias=True to run_backtest() (or to precompute_runtime_features) or these columns will be absent and bias_direction reads as 0 on every bar. It is opt-in because this is one specific definition of daily bias, not a universal feature; a new strategy should choose it deliberately or compute its own. When enabled: +1 long / -1 short / 0 none, locked at the first bar of each session-half against the previous half's close. Anchor: first half -> yesterday's second-half close; second half -> today's first-half close. ATR-based dead zone keeps the bias stable across vol regimes.
 
 | config attr | current value | description |
 |---|---|---|

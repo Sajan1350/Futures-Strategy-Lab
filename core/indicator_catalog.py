@@ -223,17 +223,23 @@ CATALOG: List[CatalogEntry] = [
     ),
     CatalogEntry(
         id="locked_bias",
-        display="Locked session-half directional bias",
+        display="Locked session-half directional bias (OPT-IN)",
         layer="feature",
         category="bias",
         timeframe="runtime",
         columns=["bias_direction", "fh_close", "prev_sh_close"],
         params=[("DEAD_ZONE_ATR_MULT", "Half-width of the no-trade dead zone, in ATR(slow) units")],
-        description="+1 long / -1 short / 0 none, locked at the first bar of "
-                    "each session-half against the previous half's close. Anchor: "
-                    "first half → yesterday's second-half close; second half "
-                    "→ today's first-half close. ATR-based dead zone keeps "
-                    "the bias stable across vol regimes.",
+        description="NOT COMPUTED BY DEFAULT - pass with_locked_bias=True to "
+                    "run_backtest() (or to precompute_runtime_features) or these "
+                    "columns will be absent and bias_direction reads as 0 on every "
+                    "bar. It is opt-in because this is one specific definition of "
+                    "daily bias, not a universal feature; a new strategy should "
+                    "choose it deliberately or compute its own. When enabled: "
+                    "+1 long / -1 short / 0 none, locked at the first bar of each "
+                    "session-half against the previous half's close. Anchor: first "
+                    "half -> yesterday's second-half close; second half -> today's "
+                    "first-half close. ATR-based dead zone keeps the bias stable "
+                    "across vol regimes.",
         use_cases=["directional_gate", "session_bias"],
         computed_in="core/runtime.py:precompute_runtime_features",
     ),

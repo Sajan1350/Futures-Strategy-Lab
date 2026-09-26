@@ -79,7 +79,7 @@ def run_backtest(
     start: str = None,
     end: str = None,
     commission: float = DEFAULT_COMMISSION,
-    adjusted: bool = False,
+    adjusted: bool = True,
     with_locked_bias: bool = False,
 ) -> BacktestResult:
     ic = INSTRUMENT_DEFS.get(symbol.upper())

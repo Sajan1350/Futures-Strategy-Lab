@@ -97,8 +97,10 @@ def main():
     parser.add_argument("--start", "--from", dest="start", type=str, default=None)
     parser.add_argument("--end", "--to", dest="end", type=str, default=None)
     parser.add_argument("--commission", type=float, default=1.50)
-    parser.add_argument("--adjusted", action="store_true",
-                        help="Use Panama back-adjusted continuous series")
+    parser.add_argument("--raw", dest="adjusted", action="store_false",
+                        default=True,
+                        help="Use the UNADJUSTED series. Known bad - contract "
+                             "months are interleaved. See backtest/data.py.")
     args = parser.parse_args()
 
     if args.list:

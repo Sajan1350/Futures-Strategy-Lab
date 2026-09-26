@@ -19,7 +19,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "parquet"
 
 
 def load_1m(symbol: str, start: str = None, end: str = None,
-            adjusted: bool = False) -> pd.DataFrame:
+            adjusted: bool = True) -> pd.DataFrame:
     """
     Load 1-minute OHLCV bars from parquet.
 
@@ -27,8 +27,17 @@ def load_1m(symbol: str, start: str = None, end: str = None,
         timestamp (tz-aware UTC), open, high, low, close, volume
     sorted by timestamp with integer index.
 
-    If adjusted=True, loads {SYMBOL}_adj.parquet (Panama back-adjusted)
-    instead of the raw stitched series.
+    Defaults to {SYMBOL}_adj.parquet, the Panama back-adjusted continuous
+    series built by scripts/back_adjust.py.
+
+    WARNING - adjusted=False loads {SYMBOL}.parquet, which is KNOWN BAD.
+    scripts/convert_databento.py merged every contract month onto a single
+    timeline instead of splicing the front month, so consecutive "minutes"
+    alternate between contracts. On MGC in 2025 that gives a median 1-minute
+    change of 13.5 points against 0.6 in the adjusted series - a 22x
+    inflation that is pure contract spread, not price movement. MNQ, MES and
+    MCL are inflated roughly 2x by the same defect. Do not backtest on it.
+    Fix convert_databento.py and rebuild before trusting the raw files.
     """
     suffix = "_adj" if adjusted else ""
     path = DATA_DIR / f"{symbol.upper()}{suffix}.parquet"

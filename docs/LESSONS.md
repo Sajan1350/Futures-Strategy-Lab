@@ -10,6 +10,38 @@ hypotheses for the next strategy, not laws.
 
 ---
 
+## ⚠ Read this before trusting any number below
+
+On 2026-09-26 the data those results were computed on was found to be
+corrupt. `scripts/convert_databento.py` merged every contract month onto
+one timeline instead of splicing the front month, so consecutive
+"minutes" alternate between contracts. On MGC the median 1-minute change
+was **13.5 points against 0.6 in the correctly adjusted series** — a 22x
+inflation that is contract spread, not price. MNQ, MES and MCL were
+inflated roughly 2x by the same defect. `adjusted=False` was the default
+everywhere, so **every backtest the retired strategies ever ran used it.**
+
+What this means for the findings below:
+
+* Every **quantitative** figure — profit factors, PnL totals, the
+  quintile boundaries, the per-symbol hour lists — is void. Do not reuse
+  a single threshold from them.
+* The **qualitative** lessons are still worth having, because they are
+  about method rather than magnitude: an indicator redundant with the
+  existing stack adds nothing, a feature can be non-monotonic, exit fill
+  assumptions change conclusions, fitting and validating on the same
+  history proves nothing. Those hold regardless of the input data.
+* Anything that looked like a discovered market regularity — the
+  per-symbol good hours especially — has to be **re-derived from
+  scratch** on the adjusted series before it means anything.
+
+The one genuinely new lesson: the old codebase ran for months of
+development without anyone plotting the price series or sanity-checking
+a bar-to-bar change distribution. A five-line histogram would have caught
+this immediately. **Validate the data before the strategy.**
+
+---
+
 ## Filters that were tried and removed
 
 **MACD (8,17,9) entry gate** — cut ~820 trades but lowered both win rate

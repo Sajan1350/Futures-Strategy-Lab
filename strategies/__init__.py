@@ -50,10 +50,17 @@ def register(cls: type[Strategy]) -> type[Strategy]:
 
 
 def discover() -> dict[str, type[Strategy]]:
-    """Import every module in this package so decorators run."""
-    for mod in pkgutil.iter_modules([str(Path(__file__).parent)]):
-        if not mod.name.startswith("_") and mod.name != "base":
-            importlib.import_module(f"{__name__}.{mod.name}")
+    """Import every module in this package and its category sub-packages so
+    the @register decorators run. Categories are plain directories
+    (strategies/trend/, strategies/breakout/, strategies/mean_reversion/)
+    rather than git branches, so strategies from different categories can be
+    backtested side by side in one run."""
+    root = Path(__file__).parent
+    for mod in pkgutil.walk_packages([str(root)], prefix=f"{__name__}."):
+        leaf = mod.name.rsplit(".", 1)[-1]
+        if leaf.startswith("_") or leaf == "base":
+            continue
+        importlib.import_module(mod.name)
     return REGISTRY
 
 

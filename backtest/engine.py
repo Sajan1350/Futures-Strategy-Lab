@@ -70,7 +70,7 @@ class BacktestResult:
     start_date: str
     end_date: str
     total_bars: int
-    df_5m: object = None  # optional: indicator frame for post-hoc analysis
+    df_bars: object = None  # the frame the strategy saw, for post-hoc analysis
 
 
 def run_backtest(
@@ -81,6 +81,9 @@ def run_backtest(
     commission: float = DEFAULT_COMMISSION,
     adjusted: bool = True,
     with_locked_bias: bool = False,
+    frame_builder=None,
+    warmup_bars: int = WARMUP_BARS,
+    enforce_risk_limits: bool = True,
 ) -> BacktestResult:
     ic = INSTRUMENT_DEFS.get(symbol.upper())
     if ic is None:
@@ -100,25 +103,30 @@ def run_backtest(
     if len(df_1m) < 1000:
         raise ValueError(f"Not enough 1m bars ({len(df_1m)}) for {symbol}.")
 
-    # ── Resample ──
-    log.info(f"[{symbol}] Resampling to 5m / 1h / daily...")
-    df_5m = resample_to_5m(df_1m)
-    df_1h = resample_to_1h(df_1m)
-    df_daily = resample_to_daily(df_1m)
+    # ── Build the bar frame the strategy will see ──
+    # A strategy whose timeframe or indicator needs differ from the
+    # 5-minute default supplies its own frame_builder(df_1m, ic) and gets
+    # full control over bar size, higher-timeframe context and columns.
+    if frame_builder is not None:
+        log.info(f"[{symbol}] Building bars via {getattr(frame_builder, '__name__', 'frame_builder')}...")
+        df_bars = frame_builder(df_1m, ic)
+    else:
+        log.info(f"[{symbol}] Resampling to 5m / 1h / daily...")
+        df_bars = resample_to_5m(df_1m)
+        df_1h = resample_to_1h(df_1m)
+        df_daily = resample_to_daily(df_1m)
 
-    # ── Compute indicators ──
-    log.info(f"[{symbol}] Computing indicators...")
-    df_1h = add_1h_indicators(df_1h)
-    df_daily = add_daily_indicators(df_daily)
-    df_5m = add_5m_indicators(df_5m, df_1h)
+        log.info(f"[{symbol}] Computing indicators...")
+        df_1h = add_1h_indicators(df_1h)
+        df_daily = add_daily_indicators(df_daily)
+        df_bars = add_5m_indicators(df_bars, df_1h)
 
-    # ── Pre-compute runtime columns ──
-    log.info(f"[{symbol}] Pre-computing session / runtime columns...")
-    df_5m = precompute_runtime_features(df_5m, df_daily, ic,
-                                        with_locked_bias=with_locked_bias)
+        log.info(f"[{symbol}] Pre-computing session / runtime columns...")
+        df_bars = precompute_runtime_features(df_bars, df_daily, ic,
+                                              with_locked_bias=with_locked_bias)
 
-    total_bars = len(df_5m)
-    log.info(f"[{symbol}] Running bar loop on {total_bars - WARMUP_BARS:,} 5-min bars...")
+    total_bars = len(df_bars)
+    log.info(f"[{symbol}] Running bar loop on {total_bars - warmup_bars:,} bars...")
 
     # Suppress risk manager spam
     logging.getLogger("strategy.risk").setLevel(logging.ERROR)
@@ -148,18 +156,20 @@ def run_backtest(
     pv = ic["point_value"]
 
     # ── Extract numpy arrays for fast access ──
-    arrays = {col: df_5m[col].to_numpy() for col in df_5m.columns if col != "timestamp"}
-    timestamps = df_5m["timestamp"].tolist()
-    columns = [c for c in df_5m.columns if c != "timestamp"]
+    arrays = {col: df_bars[col].to_numpy() for col in df_bars.columns if col != "timestamp"}
+    timestamps = df_bars["timestamp"].tolist()
+    columns = [c for c in df_bars.columns if c != "timestamp"]
 
     # ── Bar loop ──
-    for i in range(WARMUP_BARS, total_bars):
-        atr_val = arrays["atr_slow"][i]
-        if not atr_val or atr_val != atr_val:
-            for slot in slots.values():
-                if slot.flat:
-                    slot.bars_since_exit += 1
-            continue
+    atr_guard = arrays.get("atr_slow")   # absent for custom frames
+    for i in range(warmup_bars, total_bars):
+        if atr_guard is not None:
+            atr_val = atr_guard[i]
+            if not atr_val or atr_val != atr_val:
+                for slot in slots.values():
+                    if slot.flat:
+                        slot.bars_since_exit += 1
+                continue
 
         ts = timestamps[i]
         row = {col: arrays[col][i] for col in columns}
@@ -178,7 +188,7 @@ def run_backtest(
             last_trade_day = bar_date
 
         # ── Daily loss limit force-close ──
-        if risk_mgr.daily_pnl <= -ic["daily_loss_limit"]:
+        if enforce_risk_limits and risk_mgr.daily_pnl <= -ic["daily_loss_limit"]:
             for strat in strategies:
                 slot = slots[strat.name]
                 if not slot.flat:
@@ -204,8 +214,9 @@ def run_backtest(
         range_blocked = bool(row.get("is_range", False))
         bias = int(row.get("bias_direction", 0))
 
-        can_enter = (not risk_mgr.kill_triggered
-                     and risk_mgr.daily_pnl > -ic["daily_loss_limit"])
+        can_enter = True if not enforce_risk_limits else (
+            not risk_mgr.kill_triggered
+            and risk_mgr.daily_pnl > -ic["daily_loss_limit"])
 
         ctx = {
             "symbol": symbol,
@@ -309,8 +320,8 @@ def run_backtest(
                     bars_in_trade[strat.name] = 0
 
         # Progress logging
-        if (i - WARMUP_BARS) % 100_000 == 0 and i > WARMUP_BARS:
-            pct = (i - WARMUP_BARS) / (total_bars - WARMUP_BARS) * 100
+        if (i - warmup_bars) % 200_000 == 0 and i > warmup_bars:
+            pct = (i - warmup_bars) / (total_bars - warmup_bars) * 100
             log.info(f"[{symbol}] {pct:.0f}% done — {len(trades)} trades, "
                      f"equity=${equity:+.2f}")
 
@@ -331,7 +342,7 @@ def run_backtest(
             entry_running_pnl[strat.name] = 0.0
             slot.reset()
 
-    actual_start = timestamps[WARMUP_BARS]
+    actual_start = timestamps[warmup_bars]
     actual_end = timestamps[-1]
 
     log.info(f"[{symbol}] Backtest complete: {len(trades)} trades, equity=${equity:+.2f}")
@@ -343,8 +354,8 @@ def run_backtest(
         equity_curve=equity_curve,
         start_date=str(actual_start.date()) if hasattr(actual_start, "date") else str(actual_start),
         end_date=str(actual_end.date()) if hasattr(actual_end, "date") else str(actual_end),
-        total_bars=total_bars - WARMUP_BARS,
-        df_5m=df_5m,
+        total_bars=total_bars - warmup_bars,
+        df_bars=df_bars,
     )
 
 

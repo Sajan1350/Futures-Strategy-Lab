@@ -16,7 +16,7 @@ Typical use:
 
     res = run_backtest("MGC", [MyStrategy()])
     df  = aggregate_entries(res.trades)
-    df  = join_entry_features(df, res.df_5m, ["atr_fast", "atr_slow", "hour_pt"])
+    df  = join_entry_features(df, res.df_bars, ["atr_fast", "atr_slow", "hour_pt"])
     df["atr_expansion"] = df["atr_fast"] / df["atr_slow"]
 
     print_table("ATR expansion", quantile_report(df, "atr_expansion"), "bucket")
@@ -59,25 +59,25 @@ def aggregate_entries(trades: list) -> pd.DataFrame:
                .agg(pnl=("pnl", "sum"), exits=("pnl", "size")))
 
 
-def join_entry_features(entries: pd.DataFrame, df_5m: pd.DataFrame,
+def join_entry_features(entries: pd.DataFrame, df_bars: pd.DataFrame,
                         columns: list[str]) -> pd.DataFrame:
     """Attach entry-bar values of `columns` to each entry row.
 
-    `df_5m` is the indicator frame returned on BacktestResult.df_5m, so any
+    `df_bars` is the indicator frame returned on BacktestResult.df_bars, so any
     column the engine computed — indicator, runtime feature, or one you
     added yourself — can be pulled in by name.
     """
     if entries.empty:
         return entries
 
-    missing = [c for c in columns if c not in df_5m.columns]
+    missing = [c for c in columns if c not in df_bars.columns]
     if missing:
         raise KeyError(
-            f"columns not present in df_5m: {missing}. "
-            f"Available: {sorted(df_5m.columns)}"
+            f"columns not present in df_bars: {missing}. "
+            f"Available: {sorted(df_bars.columns)}"
         )
 
-    feats = df_5m[["timestamp", *columns]].set_index("timestamp")
+    feats = df_bars[["timestamp", *columns]].set_index("timestamp")
     return entries.merge(feats, left_on="entry_time", right_index=True, how="left")
 
 
